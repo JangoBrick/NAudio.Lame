@@ -1,4 +1,4 @@
-#NAudio.Lame
+# NAudio.Lame
 
 Wrapper for `libmp3lame.dll` to add MP3 encoding support to NAudio.
 
@@ -19,28 +19,30 @@ The `LameMP3FileWriter` class implements a `Stream` that encodes data written to
 
 Here is a very simple codec class to convert a WAV file to and from MP3:
 
-	using System.IO;
-	using NAudio.Wave;
-	using NAudio.Lame;
+```c#
+using System.IO;
+using NAudio.Wave;
+using NAudio.Lame;
 
-	public static class Codec
+public static class Codec
+{
+	// Convert WAV to MP3 using libmp3lame library
+	public static void WaveToMP3(string waveFileName, string mp3FileName, int bitRate = 128)
 	{
-		// Convert WAV to MP3 using libmp3lame library
-		public static void WaveToMP3(string waveFileName, string mp3FileName, int bitRate = 128)
-		{
-			using (var reader = new AudioFileReader(waveFileName))
-			using (var writer = new LameMP3FileWriter(mp3FileName, reader.WaveFormat, bitRate))
-				reader.CopyTo(writer);
-		}
-
-		// Convert MP3 file to WAV using NAudio classes only
-		public static void MP3ToWave(string mp3FileName, string waveFileName)
-		{
-			using (var reader = new Mp3FileReader(mp3FileName))
-			using (var writer = new WaveFileWriter(waveFileName, reader.WaveFormat))
-				reader.CopyTo(writer);
-		}
+		using (var reader = new AudioFileReader(waveFileName))
+		using (var writer = new LameMP3FileWriter(mp3FileName, reader.WaveFormat, bitRate))
+			reader.CopyTo(writer);
 	}
+
+	// Convert MP3 file to WAV using NAudio classes only
+	public static void MP3ToWave(string mp3FileName, string waveFileName)
+	{
+		using (var reader = new Mp3FileReader(mp3FileName))
+		using (var writer = new WaveFileWriter(waveFileName, reader.WaveFormat))
+			reader.CopyTo(writer);
+	}
+}
+```
 
 
 ### ID3 tag support
@@ -54,74 +56,78 @@ And yes, you *can* add a cover image, in JPG, PNG or GIF format.  It should supp
 
 #### Usage
 
-	using NAudio.Wave;
-	using NAudio.Lame;
-	using System;
-	
-	class Program
-	{
-		static void Main(string[] args)
-		{
-			ID3TagData tag = new ID3TagData 
-			{
- 				Title = "A Test File",
-				Artist = "Microsoft",
-				Album = "Windows 7",
-				Year = "2009",
-				Comment = "Test only.",
-				Genre = LameMP3FileWriter.Genres[1],
-				Subtitle = "From the Calligraphy theme"
-			};
+```c#
+using NAudio.Wave;
+using NAudio.Lame;
+using System;
 
-			using (var reader = new AudioFileReader(@"test.wav"))
-			using (var writer = new LameMP3FileWriter(@"test.mp3", reader.WaveFormat, 128, tag))
-			{
-				reader.CopyTo(writer);
-			}
+class Program
+{
+	static void Main(string[] args)
+	{
+		ID3TagData tag = new ID3TagData 
+		{
+			Title = "A Test File",
+			Artist = "Microsoft",
+			Album = "Windows 7",
+			Year = "2009",
+			Comment = "Test only.",
+			Genre = LameMP3FileWriter.Genres[1],
+			Subtitle = "From the Calligraphy theme"
+		};
+
+		using (var reader = new AudioFileReader(@"test.wav"))
+		using (var writer = new LameMP3FileWriter(@"test.mp3", reader.WaveFormat, 128, tag))
+		{
+			reader.CopyTo(writer);
 		}
 	}
+}
+```
 
 ### Progress Events
 
-As of v1.0.4 there is now an event (`MP3FileWriter.OnProgress`)that you can use to get progress information during the encoding process.  After each call to the LAME encoder the number of bytes in and out are sent to whatever event handler you've attached.  At the end of the process when the encoder is closing it will send the final numbers along with a flag to indicate that the encoding is complete.
+As of v1.0.4 there is now an event (`MP3FileWriter.OnProgress`) that you can use to get progress information during the encoding process.  After each call to the LAME encoder the number of bytes in and out are sent to whatever event handler you've attached.  At the end of the process when the encoder is closing it will send the final numbers along with a flag to indicate that the encoding is complete.
 
 Since blocks are encoded very frequently I've added a very simple rate limiter that will skip progress notifications if one has happened within a certain time, except for the final progress event which is always raised.  By default the progress time limit is 100ms, so you should get no more than 10 progress updates per second.  You can raise or lower this by changing the `MP3FileWriter.MinProgressTime` property.  Timing is approximate as it uses `DateTime` to store the last progress timestamp.  Resolution may vary, but expect 15ms to be a fairly common minimum.  Setting `MinProgressTime` to 0 will disable the delay and send you updates for every encoder call.
 
 #### Sample Code
 
-	using NAudio.Wave;
-	using NAudio.Lame;
-	using System;
+```c#
+using NAudio.Wave;
+using NAudio.Lame;
+using System;
 
-	class Program
+class Program
+{
+	// For calculation of progress percentage, total bytes to be input
+	static long input_length = 0;
+
+	static void Main(string[] args)
 	{
-		// For calculation of progress percentage, total bytes to be input
-		static long input_length = 0;
-
-		static void Main(string[] args)
+		using (var reader = new NAudio.Wave.AudioFileReader(@"C:\Temp\TestWave.wav"))
+		using (var writer = new NAudio.Lame.LameMP3FileWriter(@"C:\Temp\Encoded.mp3", reader.WaveFormat, NAudio.Lame.LAMEPreset.V3))
 		{
-			using (var reader = new NAudio.Wave.AudioFileReader(@"C:\Temp\TestWave.wav"))
-			using (var writer = new NAudio.Lame.LameMP3FileWriter(@"C:\Temp\Encoded.mp3", reader.WaveFormat, NAudio.Lame.LAMEPreset.V3))
-			{
-				writer.MinProgressTime = 250;
-				input_length = reader.Length;
-				writer.OnProgress += writer_OnProgress;
-				reader.CopyTo(writer);
-			}
-		}
-
-		static void writer_OnProgress(object writer, long inputBytes, long outputBytes, bool finished)
-		{
-			string msg = string.Format("Progress: {0:0.0}%, Output: {1:#,0} bytes, Ratio: 1:{2:0.0}",
-				(inputBytes * 100.0) / input_length,
-				outputBytes,
-				((double)inputBytes) / Math.Max(1, outputBytes));
-
-			Console.Write("\r{0," + (Console.BufferWidth - 1).ToString() + "}\r{1}", "", msg);
-			if (finished)
-				Console.WriteLine();
+			writer.MinProgressTime = 250;
+			input_length = reader.Length;
+			writer.OnProgress += writer_OnProgress;
+			reader.CopyTo(writer);
 		}
 	}
+
+	static void writer_OnProgress(object writer, long inputBytes, long outputBytes, bool finished)
+	{
+		string msg = string.Format("Progress: {0:0.0}%, Output: {1:#,0} bytes, Ratio: 1:{2:0.0}",
+			(inputBytes * 100.0) / input_length,
+			outputBytes,
+			((double)inputBytes) / Math.Max(1, outputBytes));
+
+		Console.Write("\r{0," + (Console.BufferWidth - 1).ToString() + "}\r{1}", "", msg);
+		if (finished)
+			Console.WriteLine();
+	}
+}
+```
 
 
 ### To Do List (indefinitely postponed):
